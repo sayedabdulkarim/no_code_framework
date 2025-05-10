@@ -1,0 +1,36 @@
+[project]
+name = "todo-assist-backend"
+version = "0.1.0"
+description = "FastAPI backend that acts as an AI agent to generate UI code based on requirements"
+authors = [
+    {name = "Developer", email = "developer@example.com"}
+]
+dependencies = [
+    "fastapi==0.104.1",
+    "uvicorn==0.23.2",
+    "httpx==0.25.1",
+    "pydantic==2.4.2",
+    "backoff>=2.2.1",  # Add backoff for retries
+    "python-dotenv>=1.0.0",
+]
+requires-python = ">=3.8"
+readme = "README.md"
+license = {text = "MIT"}
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pdm]
+[tool.pdm.dev-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+]
+
+[tool.pdm.scripts]
+start = "uvicorn main:app --reload"
+lint = "black ."
+format = "isort ."
+test = "pytest"
