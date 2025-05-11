@@ -79,78 +79,39 @@ class AgentService:
         return await self.llm_service.generate_text(prompt)
     
     async def _generate_react_project_files(self, requirement: str, analysis: str, plan: str) -> Dict[str, str]:
-        """Generate React project files in chunks to avoid timeout."""
         try:
-            # Split the prompts into chunks
-            core_prompt = f"""
-            Given this TODO app requirement, return ONLY a valid JSON object containing these React component files: 
-            '{requirement}'
+            prompt = f"""
+            Create a React + TypeScript project for this TODO app requirement:
+            {requirement}
 
-            Files needed:
-            - "src/App.tsx"
-            - "src/main.tsx"
-            - "src/components/TodoList.tsx"
-            - "src/components/TodoItem.tsx"
-
-            Format:
+            Return ONLY a valid JSON object with these file paths (do not include any others):
             {{
-                "src/App.tsx": "// Full TSX code here",
-                "src/main.tsx": "// Full TSX code here",
-                ...
+                "/src/App.tsx": "<React component code>",
+                "/src/components/TodoList.tsx": "<component code>",
+                "/src/components/TodoItem.tsx": "<component code>"
             }}
 
-            Include complete, working code for a React + Vite + shadcn/ui TODO app.
-            No explanations, only the JSON with the code.
+            Rules:
+            1. Use absolute paths starting with /src/
+            2. Include only TypeScript/React code files
+            3. Do not include config files, they will be added separately
+            4. Return only valid JSON with the specified files
+            5. Each component should be a separate file
+            6. Use proper TypeScript types
             """
 
-            config_prompt = f"""
-            Return ONLY a valid JSON object containing these config files for a React + Vite + shadcn/ui TODO app:
+            response = await self.llm_service.generate_text(prompt)
             
-            Files needed:
-            - "vite.config.ts"
-            - "tailwind.config.js"
-            - "package.json"
-            - "tsconfig.json"
-            - "components.json"
-
-            Format:
-            {{
-                "vite.config.ts": "// Full config code here",
-                "tailwind.config.js": "// Full config code here",
-                ...
-            }}
-
-            Include all necessary dependencies and configurations.
-            No explanations, only the JSON with the code.
-            """
-
-            # Generate files in parallel
-            core_response, config_response = await asyncio.gather(
-                self.llm_service.generate_text(core_prompt),
-                self.llm_service.generate_text(config_prompt)
-            )
-
-            # Parse responses
             try:
-                core_files = json.loads(core_response)
-                config_files = json.loads(config_response)
-            except json.JSONDecodeError as e:
-                raise LLMServiceError(f"Failed to parse generated code: {str(e)}")
-
-            # Combine and validate
-            files = {**core_files, **config_files}
-            required_files = {
-                "src/App.tsx",
-                "src/main.tsx",
-                "vite.config.ts",
-                "package.json"
-            }
-            
-            missing_files = required_files - set(files.keys())
-            if missing_files:
-                raise LLMServiceError(f"Missing required files: {', '.join(missing_files)}")
-
-            return files
+                files = json.loads(response)
+                # Ensure all paths start with /src/
+                files = {
+                    k if k.startswith("/src/") else f"/src/{k.lstrip('/')}": v
+                    for k, v in files.items()
+                }
+                return files
+            except json.JSONDecodeError:
+                raise LLMServiceError("Failed to parse generated code as JSON")
 
         except Exception as e:
             raise LLMServiceError(f"React project generation failed: {str(e)}")
