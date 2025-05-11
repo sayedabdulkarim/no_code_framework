@@ -30,31 +30,50 @@ class LLMService:
         self.api_token = os.getenv("REPLICATE_API_TOKEN")
         if not self.api_token:
             raise LLMServiceError("REPLICATE_API_TOKEN environment variable not set")
-        self.timeout = httpx.Timeout(timeout=120.0)
-        self.poll_interval = 1.0
-        self.max_polls = 30
+        self.timeout = httpx.Timeout(120.0, connect=60.0)  # Increase overall timeout
+        self.poll_interval = 2.0  # Increase polling interval
+        self.max_polls = 60  # Increase max polls to allow for longer processing
+        self.backoff_factor = 1.5  # Add exponential backoff
         # Initialize memory to store previous generations
         self.memory: Dict[str, Dict[str, str]] = {}
         self.memory_limit = 5  # Store the last 5 generations
     
     async def _poll_for_completion(self, client: httpx.AsyncClient, get_url: str) -> Dict[str, Any]:
-        """Poll the prediction URL until it's complete."""
-        for _ in range(self.max_polls):
-            response = await client.get(
-                get_url,
-                headers={"Authorization": f"Bearer {self.api_token}"}
-            )
-            result = response.json()
-            
-            if result.get("status") == "succeeded":
-                return result
-            elif result.get("status") == "failed":
-                raise LLMServiceError(f"Prediction failed: {result.get('error')}")
-            
-            await asyncio.sleep(self.poll_interval)
+        """Poll the prediction URL until it's complete with exponential backoff."""
+        current_interval = self.poll_interval
+        total_time = 0
         
-        raise LLMServiceError("Prediction timed out")
-    
+        for attempt in range(self.max_polls):
+            try:
+                response = await client.get(
+                    get_url,
+                    headers={"Authorization": f"Bearer {self.api_token}"},
+                    timeout=30.0  # Specific timeout for polling requests
+                )
+                result = response.json()
+                
+                if result.get("status") == "succeeded":
+                    return result
+                elif result.get("status") == "failed":
+                    raise LLMServiceError(f"Prediction failed: {result.get('error')}")
+                
+                # Calculate next polling interval with exponential backoff
+                wait_time = current_interval * (self.backoff_factor ** attempt)
+                wait_time = min(wait_time, 10.0)  # Cap at 10 seconds
+                total_time += wait_time
+                
+                logger.debug(f"Polling attempt {attempt + 1}, waiting {wait_time:.1f}s, total time: {total_time:.1f}s")
+                await asyncio.sleep(wait_time)
+                
+            except httpx.TimeoutError:
+                logger.warning(f"Timeout during polling attempt {attempt + 1}, retrying...")
+                continue
+            except Exception as e:
+                logger.error(f"Error during polling attempt {attempt + 1}: {str(e)}")
+                raise LLMServiceError(f"Polling error: {str(e)}")
+        
+        raise LLMServiceError(f"Prediction timed out after {total_time:.1f} seconds")
+
     def _save_to_memory(self, prompt: str, response: Dict[str, str]) -> None:
         """Save the prompt and response to memory."""
         # Create a simple hash of the prompt as a key
@@ -146,48 +165,55 @@ Return the COMPLETE UPDATED code in the same three blocks:
 Make sure to preserve the existing functionality while adding the requested changes. Make the code clean, modern, and production-ready."""
 
     async def generate_text(self, prompt: str) -> str:
-        """
-        Generate text response (not code blocks) for agent reasoning steps.
-        This is a wrapper around generate() but returns only the text, not code blocks.
-        """
-        # For text generation, we don't use code block extraction or memory features
-        try:
-            payload = {
-                "input": {
-                    "prompt": prompt,
-                    "temperature": 0.7,
-                    "max_new_tokens": 1000
-                }
-            }
-            
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
-                    self.base_url,
-                    json=payload,
-                    headers={
-                        "Authorization": f"Bearer {self.api_token}",
-                        "Content-Type": "application/json"
+        """Generate text response with improved error handling and retries."""
+        max_retries = 3
+        
+        for attempt in range(max_retries):
+            try:
+                payload = {
+                    "input": {
+                        "prompt": prompt,
+                        "temperature": 0.7,
+                        "max_new_tokens": 2000,  # Increase token limit
+                        "max_length": 4000  # Add max length parameter
                     }
-                )
+                }
                 
-                if response.status_code != 201:
-                    raise LLMServiceError(f"API returned status {response.status_code}: {response.text}")
-                
-                prediction = response.json()
-                if not prediction or 'urls' not in prediction or 'get' not in prediction['urls']:
-                    raise LLMServiceError("Invalid response format")
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.post(
+                        self.base_url,
+                        json=payload,
+                        headers={
+                            "Authorization": f"Bearer {self.api_token}",
+                            "Content-Type": "application/json"
+                        }
+                    )
+                    
+                    if response.status_code != 201:
+                        raise LLMServiceError(f"API returned status {response.status_code}: {response.text}")
+                    
+                    prediction = response.json()
+                    if not prediction or 'urls' not in prediction or 'get' not in prediction['urls']:
+                        raise LLMServiceError("Invalid response format")
 
-                final_result = await self._poll_for_completion(client, prediction['urls']['get'])
-                
-                if not final_result.get('output'):
-                    raise LLMServiceError("No output in prediction")
-                
-                # Join the output chunks and return
-                return ''.join(final_result['output'])
-                
-        except Exception as e:
-            logger.error(f"Error generating text: {str(e)}")
-            raise LLMServiceError(f"Error generating text: {str(e)}")
+                    final_result = await self._poll_for_completion(client, prediction['urls']['get'])
+                    
+                    if not final_result.get('output'):
+                        raise LLMServiceError("No output in prediction")
+                    
+                    # Join the output chunks and return
+                    return ''.join(final_result['output'])
+                    
+            except httpx.TimeoutError:
+                if attempt < max_retries - 1:
+                    wait_time = (attempt + 1) * 5  # Progressive retry delay
+                    logger.warning(f"Timeout on attempt {attempt + 1}, retrying in {wait_time}s...")
+                    await asyncio.sleep(wait_time)
+                    continue
+                raise LLMServiceError("All retry attempts timed out")
+            except Exception as e:
+                logger.error(f"Error on attempt {attempt + 1}: {str(e)}")
+                raise LLMServiceError(f"Error generating text: {str(e)}")
 
     async def generate(self, prompt: str) -> Dict[str, str]:
         """Generate UI code based on the requirement."""
