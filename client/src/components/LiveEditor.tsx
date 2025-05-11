@@ -6,7 +6,6 @@ import {
   SandpackProvider,
 } from "@codesandbox/sandpack-react";
 import { sandpackDark } from "@codesandbox/sandpack-themes";
-// import { sandpackDark } from "@codesandbox/sandpack-themes";
 import styled from "@emotion/styled";
 import React from "react";
 
@@ -21,18 +20,18 @@ interface LiveEditorProps {
   onToggleFullscreen?: () => void;
 }
 
-// Define minimum files needed for a working Vite React app
+// Use plain JavaScript files instead of TypeScript to avoid esbuild-wasm issues
 const defaultFiles: FileRecord = {
-  "/src/App.tsx": `import React from 'react'
+  "/src/App.jsx": `import React from 'react'
 
 export default function App() {
   return <div>Todo App</div>
 }`,
-  "/src/main.tsx": `import React from 'react'
+  "/src/main.jsx": `import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>
@@ -42,45 +41,43 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite App</title>
+    <title>Todo App</title>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>`,
   "/package.json": JSON.stringify(
     {
-      name: "vite-react-ts",
+      name: "todo-app",
       private: true,
       version: "0.0.0",
       type: "module",
       scripts: {
         dev: "vite",
         build: "vite build",
-        preview: "vite preview",
+        preview: "vite preview"
       },
       dependencies: {
-        react: "^18.2.0",
-        "react-dom": "^18.2.0",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0"
       },
       devDependencies: {
-        "@types/react": "^18.2.15",
-        "@types/react-dom": "^18.2.7",
-        "@vitejs/plugin-react": "^4.0.3",
-        typescript: "^5.0.2",
-        vite: "^4.4.5",
-      },
+        "@vitejs/plugin-react": "^3.1.0",
+        "vite": "^4.0.0"
+      }
     },
     null,
     2
   ),
-  "/vite.config.ts": `import { defineConfig } from 'vite'
+  "/vite.config.js": `import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()]
-})`,
+})`
 };
 
 export const LiveEditor: React.FC<LiveEditorProps> = ({
@@ -90,53 +87,63 @@ export const LiveEditor: React.FC<LiveEditorProps> = ({
   isFullScreen,
   onToggleFullscreen,
 }) => {
-  // Create merged files as a Record type with string keys
-  const mergedFiles: FileRecord = { ...defaultFiles };
+  // Process input files to handle TypeScript to JavaScript conversion
+  const processedFiles = React.useMemo(() => {
+    // Start with default files
+    const processedFiles: FileRecord = { ...defaultFiles };
 
-  // Add user files with normalized paths
-  Object.entries(files).forEach(([path, content]) => {
-    if (!content) return;
+    // Process input files, converting .tsx to .jsx and ensuring no duplicates
+    Object.entries(files).forEach(([path, content]) => {
+      if (!content?.trim()) return;
 
-    // Normalize path to ensure no duplicates
-    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+      // Convert TypeScript paths to JavaScript
+      const normalizedPath = path
+        .startsWith("/") ? path : `/${path}`; // Ensure leading slash
 
-    // Only add files that should be in the project
-    if (normalizedPath.startsWith("/src/") && content.trim()) {
-      mergedFiles[normalizedPath] = content;
-    }
-  });
+      // Skip files that would create duplicates
+      if (
+        normalizedPath.endsWith(".tsx") &&
+        processedFiles[normalizedPath.replace(".tsx", ".jsx")]
+      ) {
+        return;
+      }
 
-  const FileChangeListener = ({
-    onFileChange,
-    children,
-  }: {
-    onFileChange?: LiveEditorProps["onFileChange"];
-    children: React.ReactNode;
-  }) => {
-    // This is just a wrapper component that doesn't use useSandpack
-    // We'll handle file changes through other mechanisms
-    return <>{children}</>;
-  };
+      // Only process files in /src/ directory
+      if (normalizedPath.startsWith("/src/") && content.trim()) {
+        // Convert .tsx files to .jsx
+        const jsPath = normalizedPath.replace(/\.tsx$/, ".jsx");
+        processedFiles[jsPath] = content;
+      }
+    });
+
+    return processedFiles;
+  }, [files]);
 
   return (
     <Container isFullScreen={isFullScreen}>
       <SandpackProvider
         theme={sandpackDark}
-        template="vite-react-ts"
-        files={mergedFiles}
+        template="vite-react"  // Use vite-react instead of vite-react-ts
+        files={processedFiles}
         customSetup={{
           dependencies: {
-            react: "^18.2.0",
-            "react-dom": "^18.2.0",
+            "react": "^18.2.0",
+            "react-dom": "^18.2.0"
           },
-          entry: "/src/main.tsx",
+          entry: "/src/main.jsx"  // Point to JSX file, not TSX
         }}
         options={{
           activeFile: activeFile
-            ? `/${activeFile.replace(/^\/+/, "")}`
-            : "/src/App.tsx",
-          recompileMode: "delayed",
-          recompileDelay: 500,
+            ? `/${activeFile.replace(/^\/+/, "").replace(/\.tsx$/, ".jsx")}`
+            : "/src/App.jsx",
+          visibleFiles: [
+            "/src/App.jsx",
+            "/src/main.jsx",
+            "/index.html",
+            "/vite.config.js"
+          ],
+          recompileMode: "immediate",
+          recompileDelay: 500
         }}
       >
         <EditorContainer>
@@ -149,15 +156,13 @@ export const LiveEditor: React.FC<LiveEditorProps> = ({
 
           <SandpackLayout>
             <EditorWrapper>
-              <FileChangeListener onFileChange={onFileChange}>
-                <SandpackCodeEditor
-                  showTabs
-                  showLineNumbers
-                  showInlineErrors
-                  wrapContent
-                  closableTabs
-                />
-              </FileChangeListener>
+              <SandpackCodeEditor
+                showTabs
+                showLineNumbers
+                showInlineErrors
+                wrapContent
+                closableTabs
+              />
             </EditorWrapper>
             <PreviewWrapper>
               <SandpackPreview
