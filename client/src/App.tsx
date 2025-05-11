@@ -206,11 +206,10 @@ function App() {
             )}
 
             <EditorPanel
-              files={files} // Use files state instead of response.files
+              files={files}
               activeFile={activeFile}
               onFileChange={setActiveFile}
               onCodeChange={handleCodeChange}
-              getPreviewDocument={getPreviewDocument}
               isFullScreen={isFullScreen}
               onToggleFullscreen={() => setIsFullScreen(!isFullScreen)}
             />
