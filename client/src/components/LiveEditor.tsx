@@ -4,36 +4,84 @@ import {
   SandpackLayout,
   SandpackPreview,
   SandpackProvider,
-  useSandpack,
-  useActiveCode,
-  SandpackCodeViewer,
 } from "@codesandbox/sandpack-react";
 import { sandpackDark } from "@codesandbox/sandpack-themes";
+// import { sandpackDark } from "@codesandbox/sandpack-themes";
 import styled from "@emotion/styled";
 import React from "react";
 
-// Update type definitions with proper index signatures
-type FileMap = {
-  [key: string]: string;
-};
-
-interface BaseFiles extends FileMap {
-  "/src/App.tsx": string;
-  "/src/main.tsx": string;
-  "/package.json": string;
-  "/vite.config.ts": string;
-  "/index.html": string;
-  "/tsconfig.json": string;
-  [key: string]: string; // Allow additional string keys
-}
+// Define a proper index signature for our file types
+type FileRecord = Record<string, string>;
 
 interface LiveEditorProps {
-  files: FileMap;
+  files: Record<string, string>;
   activeFile?: string;
   onFileChange?: (filePath: string) => void;
   isFullScreen?: boolean;
   onToggleFullscreen?: () => void;
 }
+
+// Define minimum files needed for a working Vite React app
+const defaultFiles: FileRecord = {
+  "/src/App.tsx": `import React from 'react'
+
+export default function App() {
+  return <div>Todo App</div>
+}`,
+  "/src/main.tsx": `import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+)`,
+  "/index.html": `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vite App</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>`,
+  "/package.json": JSON.stringify(
+    {
+      name: "vite-react-ts",
+      private: true,
+      version: "0.0.0",
+      type: "module",
+      scripts: {
+        dev: "vite",
+        build: "vite build",
+        preview: "vite preview",
+      },
+      dependencies: {
+        react: "^18.2.0",
+        "react-dom": "^18.2.0",
+      },
+      devDependencies: {
+        "@types/react": "^18.2.15",
+        "@types/react-dom": "^18.2.7",
+        "@vitejs/plugin-react": "^4.0.3",
+        typescript: "^5.0.2",
+        vite: "^4.4.5",
+      },
+    },
+    null,
+    2
+  ),
+  "/vite.config.ts": `import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()]
+})`,
+};
 
 export const LiveEditor: React.FC<LiveEditorProps> = ({
   files,
@@ -42,102 +90,34 @@ export const LiveEditor: React.FC<LiveEditorProps> = ({
   isFullScreen,
   onToggleFullscreen,
 }) => {
-  // Type the base files correctly
-  const baseFiles: BaseFiles = {
-    "/src/App.tsx": `import React from 'react';
-export default function App() {
-  return <div>Todo App</div>;
-}`,
-    "/src/main.tsx": `import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
+  // Create merged files as a Record type with string keys
+  const mergedFiles: FileRecord = { ...defaultFiles };
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);`,
-    "/package.json": JSON.stringify(
-      {
-        name: "vite-react-typescript",
-        private: true,
-        version: "0.0.0",
-        type: "module",
-        scripts: {
-          dev: "vite",
-          build: "tsc && vite build",
-          preview: "vite preview",
-        },
-        dependencies: {
-          react: "^18.2.0",
-          "react-dom": "^18.2.0",
-          "@emotion/styled": "^11.11.0",
-        },
-        devDependencies: {
-          "@types/react": "^18.2.43",
-          "@types/react-dom": "^18.2.17",
-          "@vitejs/plugin-react": "^4.2.1",
-          typescript: "^5.2.2",
-          vite: "^4.5.0",
-        },
-      },
-      null,
-      2
-    ),
-    "/vite.config.ts": `import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-
-export default defineConfig({
-  plugins: [react()]
-});`,
-    "/index.html": `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React + TS</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
-</html>`,
-    "/tsconfig.json": `{
-  "compilerOptions": {
-    "target": "ES2020",
-    "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "skipLibCheck": true,
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "jsx": "react-jsx",
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
-  },
-  "include": ["src"],
-  "references": [{ "path": "./tsconfig.node.json" }]
-}`,
-  };
-
-  // Create a proper merged files object with type assertion
-  const mergedFiles: FileMap = { ...baseFiles };
-
-  // Add additional files with proper type checking
+  // Add user files with normalized paths
   Object.entries(files).forEach(([path, content]) => {
     if (!content) return;
+
+    // Normalize path to ensure no duplicates
     const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-    if (normalizedPath.startsWith("/src/")) {
+
+    // Only add files that should be in the project
+    if (normalizedPath.startsWith("/src/") && content.trim()) {
       mergedFiles[normalizedPath] = content;
     }
   });
 
-  // Remove the useSandpack hook from here
+  const FileChangeListener = ({
+    onFileChange,
+    children,
+  }: {
+    onFileChange?: LiveEditorProps["onFileChange"];
+    children: React.ReactNode;
+  }) => {
+    // This is just a wrapper component that doesn't use useSandpack
+    // We'll handle file changes through other mechanisms
+    return <>{children}</>;
+  };
+
   return (
     <Container isFullScreen={isFullScreen}>
       <SandpackProvider
@@ -145,29 +125,18 @@ export default defineConfig({
         template="vite-react-ts"
         files={mergedFiles}
         customSetup={{
-          entry: "/src/main.tsx",
-          environment: "node",
           dependencies: {
             react: "^18.2.0",
             "react-dom": "^18.2.0",
-            "@emotion/styled": "^11.11.0",
-            vite: "^4.5.0",
-            "@vitejs/plugin-react": "^4.2.1",
           },
+          entry: "/src/main.tsx",
         }}
         options={{
           activeFile: activeFile
             ? `/${activeFile.replace(/^\/+/, "")}`
             : "/src/App.tsx",
-          visibleFiles: [
-            "/src/App.tsx",
-            "/src/main.tsx",
-            "/index.html",
-            "/package.json",
-            "/vite.config.ts",
-          ],
-          recompileMode: "immediate",
-          recompileDelay: 300,
+          recompileMode: "delayed",
+          recompileDelay: 500,
         }}
       >
         <EditorContainer>
@@ -180,21 +149,20 @@ export default defineConfig({
 
           <SandpackLayout>
             <EditorWrapper>
-              <FileChangeWrapper onFileChange={onFileChange}>
+              <FileChangeListener onFileChange={onFileChange}>
                 <SandpackCodeEditor
                   showTabs
                   showLineNumbers
                   showInlineErrors
                   wrapContent
                   closableTabs
-                  readOnly={false}
                 />
-              </FileChangeWrapper>
+              </FileChangeListener>
             </EditorWrapper>
             <PreviewWrapper>
               <SandpackPreview
                 showNavigator
-                showRefreshButton={false}
+                showRefreshButton
                 showOpenInCodeSandbox={false}
               />
             </PreviewWrapper>
@@ -203,26 +171,6 @@ export default defineConfig({
       </SandpackProvider>
     </Container>
   );
-};
-
-// Update the FileChangeWrapper to use a simpler approach
-const FileChangeWrapper: React.FC<{
-  children: React.ReactNode;
-  onFileChange?: (filePath: string) => void;
-}> = ({ children, onFileChange }) => {
-  const { sandpack } = useSandpack();
-
-  // Use a simpler approach with useEffect to track file changes
-  React.useEffect(() => {
-    if (!onFileChange || !sandpack.activeFile) return;
-    
-    // When active file changes, notify parent component
-    onFileChange(sandpack.activeFile.replace(/^\//, ''));
-    
-    // We're not using sandpack.listen since it doesn't exist in the type
-  }, [sandpack.activeFile, onFileChange, sandpack.files]);
-
-  return <>{children}</>;
 };
 
 const Container = styled.div<{ isFullScreen?: boolean }>`

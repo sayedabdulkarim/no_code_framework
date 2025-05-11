@@ -23,20 +23,14 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
 }) => {
   const [showOptions, setShowOptions] = useState(false);
 
-  // Ensure files have proper path format
-  const normalizedFiles = Object.entries(files).reduce(
-    (acc, [path, content]) => {
-      const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-      acc[normalizedPath] = content;
-      return acc;
-    },
-    {} as Record<string, string>
-  );
-
   const handleDownloadZip = async () => {
     const zip = new JSZip();
     Object.entries(files).forEach(([filename, content]) => {
-      zip.file(filename, content);
+      // Remove leading slash if present
+      const cleanName = filename.startsWith("/")
+        ? filename.substring(1)
+        : filename;
+      zip.file(cleanName, content);
     });
     const blob = await zip.generateAsync({ type: "blob" });
     saveAs(blob, "project.zip");
@@ -60,8 +54,8 @@ export const EditorPanel: React.FC<EditorPanelProps> = ({
 
       <EditorContainer>
         <LiveEditor
-          files={normalizedFiles}
-          activeFile={`/${activeFile}`}
+          files={files}
+          activeFile={activeFile}
           onFileChange={onFileChange}
           isFullScreen={isFullScreen}
           onToggleFullscreen={onToggleFullscreen}
