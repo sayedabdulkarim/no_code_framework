@@ -7,6 +7,8 @@ const cors = require("cors");
 const axios = require("axios"); // Make sure axios is installed
 const executeShellCommand = require("./shell-command-executor");
 const { commandFixerAgent } = require("./utils/commandFixerAgent");
+const generateRouter = require("./routes/generate");
+const prdRouter = require("./routes/prd");
 require("dotenv").config(); // Load environment variables
 
 const app = express();
@@ -18,6 +20,10 @@ app.use(
   })
 );
 app.use(express.json()); // Parse JSON request bodies
+
+// Include routers
+app.use(generateRouter);
+app.use(prdRouter);
 
 // Proxy endpoint for OpenRouter API
 app.post("/api/proxy/openrouter", async (req, res) => {
