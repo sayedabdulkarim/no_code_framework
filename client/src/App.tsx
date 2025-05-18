@@ -1,17 +1,14 @@
-import React, { useState, useEffect } from "react";
-import Editor from "@monaco-editor/react";
 import { ThemeProvider } from "@emotion/react";
 import styled from "@emotion/styled";
-import { darkTheme } from "./theme";
-import { RequirementForm } from "./components/RequirementForm";
 import axios from "axios";
+import { useEffect, useState } from "react";
 import "./App.css";
-import { EditorPanel } from "./components/EditorPanel";
-import { Layout, ToggleButton, WorkspaceLayout } from "./components/Layout";
-import { PRDPanel } from "./components/PRDPanel";
-import { ChatPanel } from "./components/ChatPanel";
 import { ChatThread } from "./components/ChatThread";
-import { Message, MessageCategory } from "./types/chat";
+import { EditorPanel } from "./components/EditorPanel";
+import { Layout, WorkspaceLayout } from "./components/Layout";
+import { PRDPanel } from "./components/PRDPanel";
+import { darkTheme } from "./theme";
+import { Message } from "./types/chat";
 
 interface GenerateResponse {
   files: {
@@ -55,7 +52,7 @@ function App() {
     try {
       // Generate PRD first
       const prdResult = await axios.post<PRDResponse>(
-        "http://localhost:8000/generate-prd",
+        "http://localhost:3001/generate-prd",
         { requirement: message }
       );
 
@@ -96,7 +93,7 @@ function App() {
     setLoading(true);
     try {
       const result = await axios.post<GenerateResponse>(
-        "http://localhost:8000/approve-prd",
+        "http://localhost:3001/approve-prd",
         { requirement, prd, approved }
       );
 
