@@ -1,14 +1,13 @@
 import { ThemeProvider } from "@emotion/react";
 import styled from "@emotion/styled";
 import axios from "axios";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import "./App.css";
-import { ChatThread } from "./components/ChatThread";
-import { EditorPanel } from "./components/EditorPanel";
-import { Layout, WorkspaceLayout } from "./components/Layout";
-import { PRDPanel } from "./components/PRDPanel";
+import { Layout } from "./components/Layout";
+import Terminal from "./components/Terminal";
 import { darkTheme } from "./theme";
 import { Message } from "./types/chat";
+import { CommandSuggestion } from "./types/terminal";
 
 interface GenerateResponse {
   files: {
@@ -21,6 +20,15 @@ interface GenerateResponse {
   feedback?: string;
 }
 
+interface TerminalMessage {
+  id: number;
+  text: string;
+  isError: boolean;
+  timestamp: Date;
+  suggestions?: CommandSuggestion[];
+  isSuggestion?: boolean;
+}
+
 interface PRDResponse {
   prd: string;
 }
@@ -31,12 +39,91 @@ function App() {
   const [prd, setPRD] = useState<string | null>(null);
   const [response, setResponse] = useState<GenerateResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [copyStatus, setCopyStatus] = useState<{ [key: string]: boolean }>({});
-  const [activeTab, setActiveTab] = useState("chat");
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [activeFile, setActiveFile] = useState("index.html");
   const [messages, setMessages] = useState<Message[]>([]);
   const [files, setFiles] = useState<Record<string, string>>({});
+
+  // terminal start
+  const [terminalMessages, setTerminalMessages] = useState<TerminalMessage[]>([
+    {
+      id: 1,
+      text: "Welcome to the terminal. Error messages will appear here.",
+      isError: false,
+      timestamp: new Date(),
+    },
+  ]);
+
+  const addMessage = useCallback((text: string, isError: boolean) => {
+    setTerminalMessages((prevMessages) => [
+      ...prevMessages,
+      {
+        id: Date.now(),
+        text,
+        isError,
+        timestamp: new Date(),
+      },
+    ]);
+  }, []);
+
+  // Memoize addErrorMessage for Terminal component
+  const addErrorMessage = useCallback(
+    (message: string) => {
+      addMessage(message, true);
+    },
+    [addMessage]
+  );
+
+  // Add command suggestions to the chat panel
+  const addSuggestions = useCallback(
+    (
+      originalCommand: string,
+      errorMessage: string,
+      suggestions: CommandSuggestion[]
+    ) => {
+      setTerminalMessages((prevMessages) => [
+        ...prevMessages,
+        {
+          id: Date.now(),
+          text: `Suggestions for: ${originalCommand}`,
+          isError: false,
+          isSuggestion: true,
+          suggestions,
+          timestamp: new Date(),
+        },
+      ]);
+    },
+    []
+  );
+
+  // Run a command in the terminal
+  const runCommand = useCallback(
+    (command: string) => {
+      if (!command || typeof command !== "string") {
+        console.warn("Invalid command passed to runCommand:", command);
+        return;
+      }
+
+      // The terminal component will expose this function globally
+      if ((window as any).runTerminalCommand) {
+        try {
+          (window as any).runTerminalCommand(command);
+          // Also add the command as a message to show what was executed
+          addMessage(`Executed: ${command}`, false);
+        } catch (e) {
+          console.error("Error running command:", e);
+          // Add an error message if the command execution fails
+          addMessage(`Failed to execute: ${command}. Please try again.`, true);
+        }
+      } else {
+        console.warn("runTerminalCommand function not available");
+        addMessage(`Unable to run command: Terminal not ready`, true);
+      }
+    },
+    [addMessage]
+  );
+
+  // terminal end
 
   const handleSendMessage = async (message: string) => {
     setMessages((prev) => [
@@ -128,36 +215,6 @@ function App() {
     }
   };
 
-  const copyToClipboard = async (text: string, type: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopyStatus({ ...copyStatus, [type]: true });
-
-      setTimeout(() => {
-        setCopyStatus({ ...copyStatus, [type]: false });
-      }, 2000);
-    } catch (err) {
-      console.error("Failed to copy:", err);
-    }
-  };
-
-  const getPreviewDocument = () => {
-    // Use the files state instead of response.files for live updates
-    if (!files || Object.keys(files).length === 0) return "";
-
-    return `
-      <html>
-        <head>
-          <style>${files["style.css"] || ""}</style>
-        </head>
-        <body>
-          ${files["index.html"] || ""}
-          <script>${files["script.js"] || ""}</script>
-        </body>
-      </html>
-    `;
-  };
-
   const handleCodeChange = (filename: string, content: string) => {
     setFiles((prev) => ({
       ...prev,
@@ -175,43 +232,12 @@ function App() {
   return (
     <ThemeProvider theme={darkTheme}>
       <Layout>
-        {prd ? (
-          <InitialLayout>
-            <PRDPanel
-              prd={prd}
-              loading={loading}
-              onApprove={() => handlePRDApproval(true)}
-              onReject={() => handlePRDApproval(false)}
-            />
-          </InitialLayout>
-        ) : !response ? (
-          <InitialLayout>
-            <ChatThread
-              messages={messages}
-              onSendMessage={handleSendMessage}
-              loading={loading}
-            />
-          </InitialLayout>
-        ) : (
-          <WorkspaceLayout isFullScreen={isFullScreen}>
-            {!isFullScreen && (
-              <ChatThread
-                messages={messages}
-                onSendMessage={handleSendMessage}
-                loading={loading}
-              />
-            )}
-
-            <EditorPanel
-              files={files}
-              activeFile={activeFile}
-              onFileChange={setActiveFile}
-              onCodeChange={handleCodeChange}
-              isFullScreen={isFullScreen}
-              onToggleFullscreen={() => setIsFullScreen(!isFullScreen)}
-            />
-          </WorkspaceLayout>
-        )}
+        <Terminal
+          addErrorMessage={addErrorMessage}
+          addMessage={addMessage}
+          addSuggestions={addSuggestions}
+          runCommand={runCommand}
+        />
       </Layout>
     </ThemeProvider>
   );

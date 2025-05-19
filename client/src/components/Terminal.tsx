@@ -7,7 +7,6 @@ import { WebLinksAddon } from "xterm-addon-web-links";
 // import { CommandSuggestion } from "../utils/commandFixerAgent";
 import "xterm/css/xterm.css";
 import { CommandSuggestion } from "../types/terminal";
-import "./Terminal.css";
 
 interface TerminalProps {
   addErrorMessage: (message: string) => void;
