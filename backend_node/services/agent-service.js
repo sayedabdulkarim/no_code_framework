@@ -28,16 +28,16 @@ class AgentService {
     );
   }
 
-  // Analyze the requirement with React + shadcn/ui context
+  // Analyze the requirement with Next.js + Tailwind context
   async _analyzeRequirement(requirement, isModification) {
     const prompt = `
-    You are a React development expert. Analyze this UI requirement:
+    You are a Next.js development expert. Analyze this UI requirement:
     
     '${requirement}'
     
     Consider:
-    1. What React components are needed
-    2. Which shadcn/ui components can be used
+    1. What Next.js components are needed
+    2. What Tailwind CSS classes would be appropriate
     3. What state management is required
     4. Component hierarchy and data flow
     5. Any technical constraints or challenges
@@ -48,19 +48,19 @@ class AgentService {
     return await this.llmService.generateText(prompt);
   }
 
-  // Create an implementation plan for React + shadcn/ui
+  // Create an implementation plan for Next.js + Tailwind
   async _planImplementation(requirement, analysis, isModification) {
     const prompt = `
     Based on:
     Requirement: '${requirement}'
     Analysis: '${analysis}'
     
-    Create a step-by-step plan to implement this React + Vite + shadcn/ui project:
+    Create a step-by-step plan to implement this Next.js + Tailwind CSS project:
     1. Project structure and file organization
-    2. Component breakdown and responsibilities
-    3. State management approach
+    2. Component breakdown and responsibilities (using plain JavaScript, not TypeScript)
+    3. State management approach with React hooks
     4. Implementation order and dependencies
-    5. Integration points between components
+    5. Styling approach using Tailwind CSS classes
     
     Return only the concrete implementation plan, formatted as a clear list.
     `;
@@ -68,48 +68,125 @@ class AgentService {
     return await this.llmService.generateText(prompt);
   }
 
-  // Generate React project files
-  async _generateReactProjectFiles(requirement, analysis, plan) {
+  // Generate Next.js project files
+  async _generateNextJsProjectFiles(requirement, analysis, plan) {
     try {
       const prompt = `
-      Create a React + TypeScript project for this TODO app requirement:
+      🧠 Requirement:
       ${requirement}
 
-      Return ONLY a valid JSON object with these file paths (do not include any others):
-      {
-          "/src/App.tsx": "<React component code>",
-          "/src/components/TodoList.tsx": "<component code>",
-          "/src/components/TodoItem.tsx": "<component code>"
-      }
+      ✅ Tasks to perform:
 
-      Rules:
-      1. Use absolute paths starting with /src/
-      2. Include only TypeScript/React code files
-      3. Do not include config files, they will be added separately
-      4. Return only valid JSON with the specified files
-      5. Each component should be a separate file
-      6. Use proper TypeScript types
+      1. Create a Next.js project (no TypeScript).
+      2. Setup Tailwind CSS with necessary configuration files.
+      3. Create the following project structure and files:
+
+      📁 File Structure:
+      - /pages/index.js → main page rendering the TODO app
+      - /components/TodoList.js → displays list of todo items
+      - /components/TodoItem.js → represents individual todo item
+      - /styles/globals.css → global styles using Tailwind
+      - /tailwind.config.js → Tailwind configuration
+      - /postcss.config.js → PostCSS configuration
+      - /package.json → all dependencies listed (Next.js, React, TailwindCSS)
+
+      🧩 Logic Requirements:
+      - index.js should include state for managing todos (add/delete/toggle)
+      - TodoList should accept todos as props (using plain JavaScript, not TypeScript)
+      - TodoItem should accept todo, onToggle, and onDelete as props
+      - Use ONLY Tailwind CSS classes for styling (no inline styles, no CSS modules)
+      - Use plain HTML elements with Tailwind classes (no component libraries)
+      - Components should be functional components written in plain modern JavaScript
+
+      🎁 Output Format:
+      Return a single valid JSON object with file paths as keys and code content as values.
+
+      🚫 Important:
+      - Do NOT include TypeScript extensions (.ts, .tsx)
+      - Do NOT use TypeScript syntax (no interfaces, types, or React.FC)
+      - Do NOT use shadcn/ui or any other UI component libraries
+      - Do NOT include src/ in file paths
+      - Do NOT include explanations or markdown - ONLY JSON
+
+      ✅ Example Output:
+      {
+        "/pages/index.js": "import { useState } from 'react'...",
+        "/components/TodoList.js": "export default function TodoList({ todos, onToggle, onDelete }) {...",
+        ...
+      }
       `;
 
       const response = await this.llmService.generateText(prompt);
 
       try {
-        // Extract JSON from the response
-        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        // Clean response by removing markdown formatting and extracting JSON
+        const cleanResponse = response.replace(/```(json)?/g, "").trim();
+        const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/);
 
         if (!jsonMatch) {
           throw new Error("No valid JSON found in response");
         }
 
-        const files = JSON.parse(jsonMatch[0]);
+        let files;
+        try {
+          files = JSON.parse(jsonMatch[0]);
+        } catch (jsonError) {
+          // Try to sanitize the JSON if it has issues
+          const sanitizedJson = jsonMatch[0]
+            .replace(/\\'/g, "'") // Fix escaped single quotes
+            .replace(/\\"/g, '"') // Fix escaped double quotes
+            .replace(/\n/g, "\\n"); // Properly escape newlines
 
-        // Ensure all paths start with /src/
+          files = JSON.parse(sanitizedJson);
+        }
+
+        // Normalize file paths to ensure they start with /
         const normalizedFiles = {};
         for (const [key, value] of Object.entries(files)) {
-          const normalizedKey = key.startsWith("/src/")
-            ? key
-            : `/src/${key.replace(/^\//, "")}`;
+          // Ensure key starts with / and doesn't have /src/
+          let normalizedKey = key.startsWith("/") ? key : `/${key}`;
+          // Remove any /src/ prefix
+          normalizedKey = normalizedKey.replace(/^\/src\//, "/");
+
+          // Check for TypeScript extensions
+          if (normalizedKey.endsWith(".tsx") || normalizedKey.endsWith(".ts")) {
+            const jsPath = normalizedKey.replace(/\.tsx?$/, ".js");
+            console.warn(
+              `Converting TypeScript path to JavaScript: ${normalizedKey} → ${jsPath}`
+            );
+            normalizedKey = jsPath;
+          }
+
           normalizedFiles[normalizedKey] = value;
+        } // Validate required files
+        const requiredFiles = [
+          "/pages/index.js",
+          "/components/TodoList.js",
+          "/components/TodoItem.js",
+          "/styles/globals.css",
+          "/tailwind.config.js",
+          "/postcss.config.js",
+          "/package.json",
+        ];
+
+        const missingFiles = requiredFiles.filter(
+          (file) => !normalizedFiles[file]
+        );
+        if (missingFiles.length > 0) {
+          console.warn(
+            `Warning: Missing required files: ${missingFiles.join(", ")}`
+          );
+        }
+
+        // Validate file extensions to ensure they're .js not .ts/.tsx
+        const tsFiles = Object.keys(normalizedFiles).filter(
+          (file) => file.endsWith(".ts") || file.endsWith(".tsx")
+        );
+
+        if (tsFiles.length > 0) {
+          console.warn(
+            `Warning: TypeScript files detected: ${tsFiles.join(", ")}`
+          );
         }
 
         return normalizedFiles;
@@ -122,7 +199,7 @@ class AgentService {
         throw error;
       }
     } catch (error) {
-      throw new Error(`React project generation failed: ${error.message}`);
+      throw new Error(`Next.js project generation failed: ${error.message}`);
     }
   }
 
@@ -161,8 +238,8 @@ class AgentService {
         isModification
       );
 
-      // Generate React project files instead of basic UI code
-      const generatedFiles = await this._generateReactProjectFiles(
+      // Generate Next.js project files instead of basic UI code
+      const generatedFiles = await this._generateNextJsProjectFiles(
         requirement,
         analysis,
         plan
