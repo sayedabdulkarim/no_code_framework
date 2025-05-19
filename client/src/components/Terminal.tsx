@@ -19,6 +19,8 @@ interface TerminalProps {
   runCommand?: (command: string) => void;
 }
 
+// added terminal component -  hello
+
 const Terminal: React.FC<TerminalProps> = ({
   addErrorMessage,
   addMessage,
