@@ -134,4 +134,7 @@ Working through this roadmap will teach you:
 
 ---
 
-# 🚀 Good Luck Future Bur-Devta!
+
+//////
+
+after this commit, we start to get commands in terminal .
