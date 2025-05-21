@@ -581,7 +581,7 @@ const Terminal: React.FC<TerminalProps> = ({
 
                       // Call our backend API instead of direct command fixer
                       const response = await axios.post(
-                        "http://localhost:3001/api/fix-command",
+                        "http://localhost:5001/api/fix-command",
                         {
                           command: lastCommandRef.current,
                         }
@@ -632,7 +632,7 @@ const Terminal: React.FC<TerminalProps> = ({
 
                           // Call our backend API with the simplified command
                           const response = await axios.post(
-                            "http://localhost:3001/api/fix-command",
+                            "http://localhost:5001/api/fix-command",
                             {
                               command: simplifiedCommand,
                             }
@@ -686,7 +686,7 @@ const Terminal: React.FC<TerminalProps> = ({
 
                         // Make one final call to the backend API
                         const response = await axios.post(
-                          "http://localhost:3001/api/fix-command",
+                          "http://localhost:5001/api/fix-command",
                           {
                             command: lastCommandRef.current,
                           }
@@ -976,7 +976,7 @@ const Terminal: React.FC<TerminalProps> = ({
 
     // Initialize socket connection
     try {
-      socketRef.current = io("http://localhost:3001");
+      socketRef.current = io("http://localhost:5001");
       console.log("Socket connection initialized");
     } catch (err) {
       console.error("Error initializing socket connection:", err);

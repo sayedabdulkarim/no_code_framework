@@ -154,4 +154,36 @@ ${requirements}
   }
 });
 
+router.get("/project-history/:projectName", (req, res) => {
+  const { projectName } = req.params;
+
+  if (!projectName) {
+    return res.status(400).json({ error: "Project name is required" });
+  }
+
+  const history = projectHistory[projectName] || { updates: [] };
+  return res.json(history);
+});
+
+// DELETE /clear-project-history/:projectName - Clear history for a specific project
+router.delete("/clear-project-history/:projectName", async (req, res) => {
+  const { projectName } = req.params;
+
+  if (!projectName) {
+    return res.status(400).json({ error: "Project name is required" });
+  }
+
+  if (projectHistory[projectName]) {
+    // Keep the original PRD but clear updates
+    projectHistory[projectName].updates = [];
+
+    // Save the updated history
+    await saveProjectHistory();
+
+    return res.json({ message: `History cleared for project ${projectName}` });
+  }
+
+  return res.status(404).json({ error: "Project history not found" });
+});
+
 module.exports = router;

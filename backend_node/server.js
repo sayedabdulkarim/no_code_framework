@@ -13,24 +13,29 @@ const prdRouter = require("./routes/prd");
 //
 const initializeProjectRouter = require("./services/initialize-project");
 const updateProjectRouter = require("./services/update-project");
+const listProjectsRouter = require("./services/list-projects");
 
 require("dotenv").config(); // Load environment variables
 
 const app = express();
+// Increase payload size limits first before other middleware
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+
 app.use(
   cors({
-    origin: "http://localhost:3000", // Frontend URL
+    origin: ["http://localhost:3000", "http://localhost:3001"], // Allow multiple origins
     methods: ["GET", "POST"],
     credentials: true,
   })
 );
-app.use(express.json()); // Parse JSON request bodies
 
 // Include routers
 app.use(generateRouter);
 app.use(prdRouter);
 app.use("/api", initializeProjectRouter);
 app.use("/api", updateProjectRouter);
+app.use("/api", listProjectsRouter);
 
 // Proxy endpoint for OpenRouter API
 app.post("/api/proxy/openrouter", async (req, res) => {
@@ -171,7 +176,16 @@ io.on("connection", (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 3001;
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error("Global error handler:", err);
+  res.status(500).json({
+    error: "Internal Server Error", 
+    message: err.message || "Something went wrong on the server",
+  });
+});
+
+const PORT = process.env.PORT || 5001;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

@@ -36,6 +36,11 @@ interface PRDResponse {
   prd: string;
 }
 
+interface Project {
+  name: string;
+  path: string;
+}
+
 function App() {
   const [requirement, setRequirement] = useState("");
   const [loading, setLoading] = useState(false);
@@ -46,6 +51,13 @@ function App() {
   const [activeFile, setActiveFile] = useState("index.html");
   const [messages, setMessages] = useState<Message[]>([]);
   const [files, setFiles] = useState<Record<string, string>>({});
+
+  // Project management states
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const [updateRequirement, setUpdateRequirement] = useState("");
+
+  const [test, setTest] = useState(false);
 
   // terminal start
   const [terminalMessages, setTerminalMessages] = useState<TerminalMessage[]>([
@@ -142,7 +154,7 @@ function App() {
     try {
       // Generate PRD first
       const prdResult = await axios.post<PRDResponse>(
-        "http://localhost:3001/generate-prd",
+        "http://localhost:5001/generate-prd",
         { requirement: message }
       );
 
@@ -183,7 +195,7 @@ function App() {
     setLoading(true);
     try {
       const result = await axios.post<GenerateResponse>(
-        "http://localhost:3001/approve-prd",
+        "http://localhost:5001/approve-prd",
         { requirement, prd, approved }
       );
 
@@ -228,13 +240,13 @@ function App() {
     setLoading(true);
     try {
       const result = await axios.post(
-        "http://localhost:3001/api/initialize-project",
+        "http://localhost:5001/api/initialize-project",
         { prd }
       );
       const projectName = result.data.projectName;
 
       const updateResult = await axios.post(
-        "http://localhost:3001/api/update-project",
+        "http://localhost:5001/api/update-project",
         {
           projectName,
           requirements: prd,
@@ -274,8 +286,149 @@ function App() {
     }
   }, [response]);
 
+  // Fetch projects on component mount
+  useEffect(() => {
+    const fetchProjects = async () => {
+      try {
+        const result = await axios.get(
+          "http://localhost:5001/api/list-projects"
+        );
+        console.log("Fetched projects:", result.data);
+        setProjects(result.data.projects || []);
+      } catch (err) {
+        console.error("Error fetching projects:", err);
+        setError("Failed to fetch projects");
+      }
+    };
+
+    fetchProjects();
+  }, [test, prd]);
+
+  // Handle project update
+  const handleUpdateProject = async () => {
+    if (!selectedProject || !updateRequirement.trim()) {
+      setError("Please select a project and enter update requirements");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await axios.post(
+        "http://localhost:5001/api/update-project",
+        {
+          projectName: selectedProject,
+          requirements: updateRequirement,
+        }
+      );
+
+      if (result.data && result.data.message) {
+        addMessage(`Project updated: ${result.data.message}`, false);
+
+        // Add success message
+        setMessages((prev) => [
+          ...prev,
+          {
+            type: "agent",
+            content: `Project ${selectedProject} updated successfully! ${
+              result.data.explanation || ""
+            }`,
+            category: "success",
+          },
+        ]);
+
+        // Reset update requirement
+        setUpdateRequirement("");
+      } else if (result.data && result.data.error) {
+        setError(result.data.error);
+        addErrorMessage(result.data.error);
+      }
+    } catch (err: any) {
+      console.error("Error updating project:", err);
+      setError("Failed to update project");
+      addErrorMessage(
+        "Failed to update project: " +
+          (err.response?.data?.error || err.message)
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle clear history
+  const handleClearHistory = async (projectName: string) => {
+    try {
+      const result = await axios.delete(
+        `http://localhost:5001/api/clear-project-history/${projectName}`
+      );
+
+      if (result.data && result.data.message) {
+        addMessage(`${result.data.message}`, false);
+
+        // Add success message
+        setMessages((prev) => [
+          ...prev,
+          {
+            type: "agent",
+            content: `Project history cleared for ${projectName}. Future updates will start from a clean slate.`,
+            category: "success",
+          },
+        ]);
+      }
+    } catch (err: any) {
+      console.error("Error clearing project history:", err);
+      setError("Failed to clear project history");
+      addErrorMessage(
+        "Failed to clear project history: " +
+          (err.response?.data?.error || err.message)
+      );
+    }
+  };
+
   return (
     <ThemeProvider theme={darkTheme}>
+      <button onClick={() => console.log({ projects }, " ppp")}>Hello</button>
+      <button onClick={() => setTest(!test)}>Test</button>
+      <ProjectManagementPanel>
+        <h2>Your Projects</h2>
+        <ProjectPillContainer>
+          {projects.map((project) => (
+            <ProjectPill
+              key={project.name}
+              isSelected={selectedProject === project.name}
+              onClick={() => setSelectedProject(project.name)}
+            >
+              {project.name}
+            </ProjectPill>
+          ))}
+        </ProjectPillContainer>
+
+        {selectedProject && (
+          <ProjectUpdateForm>
+            <h3>Update Project: {selectedProject}</h3>
+            <textarea
+              placeholder="Enter new requirements or updates for your project"
+              value={updateRequirement}
+              onChange={(e) => setUpdateRequirement(e.target.value)}
+              rows={5}
+            />
+            <ButtonContainer>
+              <UpdateButton
+                onClick={handleUpdateProject}
+                disabled={loading || !updateRequirement.trim()}
+              >
+                {loading ? "Updating..." : "Update Project"}
+              </UpdateButton>
+              <ClearHistoryButton
+                onClick={() => handleClearHistory(selectedProject)}
+                disabled={loading}
+              >
+                Clear History
+              </ClearHistoryButton>
+            </ButtonContainer>
+            {error && <ErrorMessage>{error}</ErrorMessage>}
+          </ProjectUpdateForm>
+        )}
+      </ProjectManagementPanel>
       <Layout>
         {/* <Terminal
           addErrorMessage={addErrorMessage}
@@ -283,6 +436,7 @@ function App() {
           addSuggestions={addSuggestions}
           runCommand={runCommand}
         /> */}
+        {/* Project management UI */}
         {prd ? (
           <InitialLayout>
             <PRDPanel
@@ -295,6 +449,7 @@ function App() {
           </InitialLayout>
         ) : !response ? (
           <InitialLayout>
+            {/* Original chat thread */}
             <ChatThread
               messages={messages}
               onSendMessage={handleSendMessage}
@@ -335,6 +490,126 @@ const InitialLayout = styled.div`
   max-width: 800px;
   margin: 0 auto;
   padding: ${(props) => props.theme.spacing.md};
+`;
+
+// Project management UI components
+const ProjectManagementPanel = styled.div`
+  width: 100%;
+  margin-bottom: 20px;
+  padding: 20px;
+  background: ${(props) => props.theme.colors.surface};
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+
+  h2,
+  h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: ${(props) => props.theme.colors.primary};
+  }
+`;
+
+const ProjectPillContainer = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 20px;
+`;
+
+const ProjectPill = styled.div<{ isSelected: boolean }>`
+  padding: 8px 16px;
+  border-radius: 20px;
+  background: ${(props) =>
+    props.isSelected
+      ? props.theme.colors.primary
+      : props.theme.colors.background};
+  color: ${(props) => (props.isSelected ? "#fff" : props.theme.colors.text)};
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 14px;
+
+  &:hover {
+    transform: translateY(-2px);
+    background: ${(props) =>
+      props.isSelected
+        ? props.theme.colors.primary
+        : props.theme.colors.surface};
+  }
+`;
+
+const ProjectUpdateForm = styled.div`
+  width: 100%;
+  padding-top: 15px;
+  border-top: 1px solid ${(props) => props.theme.colors.border};
+
+  textarea {
+    margin-bottom: 15px;
+    border: 1px solid ${(props) => props.theme.colors.border};
+    border-radius: 4px;
+    background: ${(props) => props.theme.colors.background};
+    padding: 12px;
+    width: 100%;
+    resize: vertical;
+    color: ${(props) => props.theme.colors.text};
+    font-family: inherit;
+
+    &:focus {
+      outline: none;
+      border-color: ${(props) => props.theme.colors.primary};
+    }
+  }
+`;
+
+const UpdateButton = styled.button`
+  padding: 10px 20px;
+  background: ${(props) => props.theme.colors.primary};
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+
+  &:hover:not(:disabled) {
+    background: ${(props) => `${props.theme.colors.primary}dd`};
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+`;
+
+const ErrorMessage = styled.div`
+  color: #e74c3c;
+  margin-top: 10px;
+  font-size: 14px;
+`;
+
+const ButtonContainer = styled.div`
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+`;
+
+const ClearHistoryButton = styled.button`
+  padding: 10px 20px;
+  background: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s;
+
+  &:hover:not(:disabled) {
+    background: #5a6268;
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
 `;
 
 export default App;
