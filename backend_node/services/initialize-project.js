@@ -32,7 +32,8 @@ router.post("/initialize-project", async (req, res) => {
 
     // Run create-next-app command
     // const command = `npx create-next-app@latest ${projectName} --tailwind --eslint --app --src-dir --import-alias "@/" --yes`;
-    const command = `npx create-next-app@latest ${projectName} --tailwind --eslint --app --src-dir --import-alias "@/" --ts --yes`;
+    // const command = `npx create-next-app@latest ${projectName} --tailwind --eslint --app --src-dir --import-alias "@/" --ts --yes`;
+    const command = `npx create-next-app@latest ${projectName} --tailwind --eslint --app --src-dir --ts --yes`;
 
     console.log("Running command:", command);
 

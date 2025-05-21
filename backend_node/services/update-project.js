@@ -29,9 +29,12 @@ router.post("/update-project", async (req, res) => {
     const prompt = isInitial
       ? `
 You are an expert Next.js developer. Generate the FULL codebase for the following PRD using Next.js (with app directory) and Tailwind CSS.
-Respond ONLY with a JSON object as described below. Do NOT include any explanation, markdown, or extra text.
 
-Format:
+CRITICAL: Your entire response must be only valid JSON. Do not include any text outside the JSON.
+Do NOT use markdown code blocks. Do NOT include any explanation or prose outside of the JSON object.
+The JSON must have a "files" array and an "explanation" field.
+
+JSON format:
 {
   "files": [
     {
@@ -60,7 +63,11 @@ Generate code updates that:
 - Implement the new requirements
 - Use Tailwind CSS for styling
 
-Format your response as a JSON object with the following structure:
+CRITICAL: Your entire response must be only valid JSON. Do not include any text outside the JSON.
+Do NOT use markdown code blocks. Do NOT include any explanation or prose outside of the JSON object.
+The JSON must have a "files" array and an "explanation" field.
+
+JSON format:
 {
   "files": [
     {
@@ -112,14 +119,50 @@ ${requirements}
 
     let parsed;
     try {
-      parsed = JSON.parse(completion.replace(/```(json)?/g, "").trim());
+      // First try direct parsing
+      try {
+        parsed = JSON.parse(completion);
+      } catch (initialError) {
+        // If direct parsing fails, try cleaning markdown formatting
+        parsed = JSON.parse(completion.replace(/```(json)?/g, "").trim());
+      }
+
+      // Validate the parsed object has the expected structure
+      if (!parsed || !Array.isArray(parsed.files)) {
+        throw new Error(
+          "Invalid response format: missing or invalid 'files' array"
+        );
+      }
     } catch (err) {
       console.error("LLM did not return valid JSON:", completion);
-      return res.status(500).json({
-        error:
-          "LLM did not return valid JSON. Please try again or adjust your prompt.",
-        details: completion,
-      });
+
+      // If the response looks like JSON but couldn't be parsed, try to use it directly
+      // This is a fallback for when the JSON is valid but our parsing is failing
+      if (
+        completion.includes('"files":') &&
+        completion.includes('"action":') &&
+        completion.includes('"path":')
+      ) {
+        try {
+          // Try one more approach - sometimes the JSON has extra newlines or formatting
+          const cleanedJson = completion
+            .replace(/\\n/g, "\\n")
+            .replace(/\\\\/g, "\\");
+          parsed = JSON.parse(cleanedJson);
+        } catch (finalError) {
+          return res.status(500).json({
+            error:
+              "Could not parse LLM response as valid JSON. Please try again.",
+            details: completion,
+          });
+        }
+      } else {
+        return res.status(500).json({
+          error:
+            "LLM did not return valid JSON. Please try again or adjust your prompt.",
+          details: completion,
+        });
+      }
     }
 
     const changes = [];
