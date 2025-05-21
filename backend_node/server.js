@@ -9,6 +9,11 @@ const executeShellCommand = require("./shell-command-executor");
 const { commandFixerAgent } = require("./utils/commandFixerAgent");
 const generateRouter = require("./routes/generate");
 const prdRouter = require("./routes/prd");
+
+//
+const initializeProjectRouter = require("./services/initialize-project");
+const updateProjectRouter = require("./services/update-project");
+
 require("dotenv").config(); // Load environment variables
 
 const app = express();
@@ -24,6 +29,8 @@ app.use(express.json()); // Parse JSON request bodies
 // Include routers
 app.use(generateRouter);
 app.use(prdRouter);
+app.use("/api", initializeProjectRouter);
+app.use("/api", updateProjectRouter);
 
 // Proxy endpoint for OpenRouter API
 app.post("/api/proxy/openrouter", async (req, res) => {

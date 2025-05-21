@@ -3,8 +3,11 @@ import styled from "@emotion/styled";
 import axios from "axios";
 import { useCallback, useEffect, useState } from "react";
 import "./App.css";
-import { Layout } from "./components/Layout";
-import Terminal from "./components/Terminal";
+import { ChatThread } from "./components/ChatThread";
+import { EditorPanel } from "./components/EditorPanel";
+import { Layout, WorkspaceLayout } from "./components/Layout";
+import { PRDPanel } from "./components/PRDPanel";
+// import Terminal from "./components/Terminal";
 import { darkTheme } from "./theme";
 import { Message } from "./types/chat";
 import { CommandSuggestion } from "./types/terminal";
@@ -215,6 +218,48 @@ function App() {
     }
   };
 
+  //here we hv to call /initialize-project
+  const handleInitializeProject = async () => {
+    if (!prd) {
+      setError("No PRD available to initialize the project.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await axios.post(
+        "http://localhost:3001/api/initialize-project",
+        { prd }
+      );
+      const projectName = result.data.projectName;
+
+      const updateResult = await axios.post(
+        "http://localhost:3001/api/update-project",
+        {
+          projectName,
+          requirements: prd,
+        }
+      );
+
+      if (updateResult.data && updateResult.data.message) {
+        addMessage(`Project updated: ${updateResult.data.message}`, false);
+      } else if (updateResult.data && updateResult.data.error) {
+        setError(updateResult.data.error);
+        addErrorMessage(updateResult.data.error);
+      } else {
+        addMessage("Project updated, but no message returned.", false);
+      }
+
+      addMessage(`Project Path: ${result.data.projectPath}`, false);
+    } catch (err: any) {
+      console.error("Error initializing project:", err);
+      setError("Failed to initialize the project. Please try again.");
+      addErrorMessage("Failed to initialize the project.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleCodeChange = (filename: string, content: string) => {
     setFiles((prev) => ({
       ...prev,
@@ -232,12 +277,50 @@ function App() {
   return (
     <ThemeProvider theme={darkTheme}>
       <Layout>
-        <Terminal
+        {/* <Terminal
           addErrorMessage={addErrorMessage}
           addMessage={addMessage}
           addSuggestions={addSuggestions}
           runCommand={runCommand}
-        />
+        /> */}
+        {prd ? (
+          <InitialLayout>
+            <PRDPanel
+              prd={prd}
+              loading={loading}
+              // onApprove={() => handlePRDApproval(true)}
+              onApprove={() => handleInitializeProject()}
+              onReject={() => handlePRDApproval(false)}
+            />
+          </InitialLayout>
+        ) : !response ? (
+          <InitialLayout>
+            <ChatThread
+              messages={messages}
+              onSendMessage={handleSendMessage}
+              loading={loading}
+            />
+          </InitialLayout>
+        ) : (
+          <WorkspaceLayout isFullScreen={isFullScreen}>
+            {!isFullScreen && (
+              <ChatThread
+                messages={messages}
+                onSendMessage={handleSendMessage}
+                loading={loading}
+              />
+            )}
+
+            <EditorPanel
+              files={files}
+              activeFile={activeFile}
+              onFileChange={setActiveFile}
+              onCodeChange={handleCodeChange}
+              isFullScreen={isFullScreen}
+              onToggleFullscreen={() => setIsFullScreen(!isFullScreen)}
+            />
+          </WorkspaceLayout>
+        )}
       </Layout>
     </ThemeProvider>
   );

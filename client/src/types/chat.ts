@@ -4,7 +4,8 @@ export type MessageCategory =
   | "plan"
   | "feedback"
   | "prd"
-  | "error";
+  | "error"
+  | "success";
 
 export interface Message {
   type: "user" | "agent";
