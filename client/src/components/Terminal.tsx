@@ -5,8 +5,22 @@ import { Terminal as XTerm } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
 import { WebLinksAddon } from "xterm-addon-web-links";
 // import { CommandSuggestion } from "../utils/commandFixerAgent";
+import styled from "@emotion/styled";
 import "xterm/css/xterm.css";
 import { CommandSuggestion } from "../types/terminal";
+
+// Style for the terminal container
+const TerminalContainer = styled.div`
+  height: 100%;
+  width: 100%;
+  background-color: #1e1e1e;
+  border-radius: 4px;
+  overflow: hidden;
+
+  .xterm {
+    height: 100%;
+  }
+`;
 
 interface TerminalProps {
   addErrorMessage: (message: string) => void;
@@ -1327,7 +1341,7 @@ const Terminal: React.FC<TerminalProps> = ({
     };
   }, [runCommand, executeCommand]);
 
-  return <div ref={terminalRef} className="terminal-container" />;
+  return <TerminalContainer ref={terminalRef} className="terminal-container" />;
 };
 
 export default Terminal;

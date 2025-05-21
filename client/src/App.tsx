@@ -7,7 +7,7 @@ import { ChatThread } from "./components/ChatThread";
 import { EditorPanel } from "./components/EditorPanel";
 import { Layout, WorkspaceLayout } from "./components/Layout";
 import { PRDPanel } from "./components/PRDPanel";
-// import Terminal from "./components/Terminal";
+import Terminal from "./components/Terminal";
 import { darkTheme } from "./theme";
 import { Message } from "./types/chat";
 import { CommandSuggestion } from "./types/terminal";
@@ -438,15 +438,25 @@ function App() {
         /> */}
         {/* Project management UI */}
         {prd ? (
-          <InitialLayout>
-            <PRDPanel
-              prd={prd}
-              loading={loading}
-              // onApprove={() => handlePRDApproval(true)}
-              onApprove={() => handleInitializeProject()}
-              onReject={() => handlePRDApproval(false)}
-            />
-          </InitialLayout>
+          <DualPanelLayout>
+            <Panel>
+              <PRDPanel
+                prd={prd}
+                loading={loading}
+                // onApprove={() => handlePRDApproval(true)}
+                onApprove={() => handleInitializeProject()}
+                onReject={() => handlePRDApproval(false)}
+              />
+            </Panel>
+            <TerminalPanel>
+              <Terminal
+                addErrorMessage={addErrorMessage}
+                addMessage={addMessage}
+                addSuggestions={addSuggestions}
+                runCommand={runCommand}
+              />
+            </TerminalPanel>
+          </DualPanelLayout>
         ) : !response ? (
           <InitialLayout>
             {/* Original chat thread */}
@@ -490,6 +500,26 @@ const InitialLayout = styled.div`
   max-width: 800px;
   margin: 0 auto;
   padding: ${(props) => props.theme.spacing.md};
+`;
+
+const DualPanelLayout = styled.div`
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 100vh;
+`;
+
+const Panel = styled.div`
+  flex: 1;
+  overflow: auto;
+  padding: ${(props) => props.theme.spacing.sm};
+  display: flex;
+  flex-direction: column;
+`;
+
+const TerminalPanel = styled(Panel)`
+  background-color: ${(props) => props.theme.colors.background};
+  border-left: 1px solid ${(props) => props.theme.colors.border};
 `;
 
 // Project management UI components
