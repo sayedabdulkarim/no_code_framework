@@ -31,15 +31,15 @@ interface TerminalProps {
     suggestions: CommandSuggestion[]
   ) => void;
   runCommand?: (command: string) => void;
+  onSocketReady?: (socketId: string) => void;
 }
-
-// added terminal component -  hello
 
 const Terminal: React.FC<TerminalProps> = ({
   addErrorMessage,
   addMessage,
   addSuggestions,
   runCommand,
+  onSocketReady,
 }) => {
   const terminalRef = useRef<HTMLDivElement>(null);
   const terminalInstance = useRef<XTerm | null>(null);
@@ -53,6 +53,9 @@ const Terminal: React.FC<TerminalProps> = ({
   const processedPairsRef = useRef<Set<string>>(new Set()); // Track command+error pairs we've already processed
   const timeoutIdsRef = useRef<NodeJS.Timeout[]>([]); // Store all timeout IDs for cleanup
   const resizeObserverRef = useRef<ResizeObserver | null>(null); // Track ResizeObserver for cleanup
+  const reconnectAttemptsRef = useRef<number>(0);
+  const maxReconnectAttempts = 5;
+  const reconnectDelay = 2000; // 2 seconds between reconnection attempts
 
   // Execute a command in the terminal
   const executeCommand = useCallback((command: string) => {
@@ -988,12 +991,78 @@ const Terminal: React.FC<TerminalProps> = ({
       }
     };
 
-    // Initialize socket connection
+    // Initialize socket connection with reconnection logic
     try {
-      socketRef.current = io("http://localhost:5001");
-      console.log("Socket connection initialized");
+      // Set up socket with reconnection options
+      socketRef.current = io("http://localhost:5001", {
+        reconnectionAttempts: 5,
+        reconnectionDelay: 2000,
+        timeout: 10000,
+      });
+
+      console.log("Socket connection initializing...");
+
+      // Handle connection events
+      socketRef.current.on("connect", () => {
+        console.log(
+          "Socket connected successfully with ID:",
+          socketRef.current?.id
+        );
+        terminalInstance.current?.write(
+          "\r\n\x1b[32m> Connected to server.\x1b[0m\r\n"
+        );
+        reconnectAttemptsRef.current = 0; // Reset reconnection attempts on successful connection
+      });
+
+      socketRef.current.on("connect_error", (err) => {
+        console.error("Socket connection error:", err);
+        terminalInstance.current?.write(
+          `\r\n\x1b[31m> Connection error: ${err.message}\x1b[0m\r\n`
+        );
+        addErrorMessage(
+          `Terminal connection error: ${err.message}. Attempting to reconnect...`
+        );
+      });
+
+      socketRef.current.on("disconnect", (reason) => {
+        console.log("Socket disconnected:", reason);
+        terminalInstance.current?.write(
+          `\r\n\x1b[33m> Disconnected from server: ${reason}\x1b[0m\r\n`
+        );
+
+        if (reason === "io server disconnect") {
+          // Server initiated the disconnect, try to reconnect manually
+          socketRef.current?.connect();
+        }
+      });
+
+      socketRef.current.on("reconnect", (attemptNumber) => {
+        console.log("Socket reconnected after", attemptNumber, "attempts");
+        terminalInstance.current?.write(
+          `\r\n\x1b[32m> Reconnected to server after ${attemptNumber} attempts\x1b[0m\r\n`
+        );
+        addMessage("Terminal connection restored.", false);
+      });
+
+      socketRef.current.on("reconnect_attempt", (attemptNumber) => {
+        console.log("Socket reconnection attempt:", attemptNumber);
+        terminalInstance.current?.write(
+          `\r\n\x1b[33m> Attempting to reconnect (${attemptNumber})...\x1b[0m\r\n`
+        );
+      });
+
+      socketRef.current.on("reconnect_failed", () => {
+        console.log("Socket reconnection failed");
+        terminalInstance.current?.write(
+          "\r\n\x1b[31m> Reconnection failed. Please refresh the page.\x1b[0m\r\n"
+        );
+        addErrorMessage(
+          "Terminal connection failed. Please refresh the page to try again."
+        );
+      });
     } catch (err) {
       console.error("Error initializing socket connection:", err);
+      addErrorMessage("Failed to initialize terminal connection");
     }
 
     // Properly clean up any existing terminal instance
@@ -1129,13 +1198,53 @@ const Terminal: React.FC<TerminalProps> = ({
       // No need for the delayed manual fit attempts
     }
 
-    // Handle terminal output from server and detect errors
+    // Handle terminal output from server with improved display and error detection
     if (socketRef.current) {
       socketRef.current.on("output", (data: string) => {
         if (terminalInstance.current) {
-          terminalInstance.current.write(data);
+          // Add special formatting for common status messages
+          let processedData = data;
+
+          // Format initialization messages
+          if (data.includes("Starting project initialization")) {
+            processedData = `\r\n\x1b[1;34m${data}\x1b[0m`;
+          }
+          // Format success messages
+          else if (
+            data.includes("success") ||
+            data.includes("completed successfully")
+          ) {
+            processedData = `\x1b[1;32m${data}\x1b[0m`;
+          }
+          // Format error messages
+          else if (
+            data.toLowerCase().includes("error") ||
+            data.toLowerCase().includes("failed")
+          ) {
+            processedData = `\x1b[1;31m${data}\x1b[0m`;
+          }
+          // Format warning messages
+          else if (
+            data.toLowerCase().includes("warning") ||
+            data.toLowerCase().includes("note:")
+          ) {
+            processedData = `\x1b[1;33m${data}\x1b[0m`;
+          }
+
+          // Write the processed data to the terminal
+          terminalInstance.current.write(processedData);
+
           // Process error detection in an optimized way
           detectAndHandleError(data);
+
+          // Keep terminal scrolled to bottom for real-time updates
+          try {
+            if (terminalInstance.current.buffer.active) {
+              terminalInstance.current.scrollToBottom();
+            }
+          } catch (e) {
+            console.error("Error scrolling terminal:", e);
+          }
         }
       });
     }
@@ -1340,6 +1449,23 @@ const Terminal: React.FC<TerminalProps> = ({
       delete (window as any).runTerminalCommand;
     };
   }, [runCommand, executeCommand]);
+
+  // Notify parent component when socket is ready
+  useEffect(() => {
+    if (socketRef.current && onSocketReady) {
+      socketRef.current.on("connect", () => {
+        console.log("Socket connected with ID:", socketRef.current?.id);
+        if (socketRef.current?.id) {
+          onSocketReady(socketRef.current.id);
+        }
+      });
+
+      // If socket is already connected, notify right away
+      if (socketRef.current.connected && socketRef.current.id) {
+        onSocketReady(socketRef.current.id);
+      }
+    }
+  }, [onSocketReady]);
 
   return <TerminalContainer ref={terminalRef} className="terminal-container" />;
 };

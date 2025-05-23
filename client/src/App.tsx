@@ -7,7 +7,7 @@ import { ChatThread } from "./components/ChatThread";
 import { EditorPanel } from "./components/EditorPanel";
 import { Layout, WorkspaceLayout } from "./components/Layout";
 import { PRDPanel } from "./components/PRDPanel";
-import Terminal from "./components/Terminal";
+import TerminalWithHeader from "./components/TerminalWithHeader";
 import { darkTheme } from "./theme";
 import { Message } from "./types/chat";
 import { CommandSuggestion } from "./types/terminal";
@@ -51,6 +51,7 @@ function App() {
   const [activeFile, setActiveFile] = useState("index.html");
   const [messages, setMessages] = useState<Message[]>([]);
   const [files, setFiles] = useState<Record<string, string>>({});
+  const [socketId, setSocketId] = useState<string | null>(null);
 
   // Project management states
   const [projects, setProjects] = useState<Project[]>([]);
@@ -68,6 +69,12 @@ function App() {
       timestamp: new Date(),
     },
   ]);
+
+  // Callback function to receive socket ID from Terminal
+  const handleSocketReady = useCallback((id: string) => {
+    console.log("Terminal socket is ready with ID:", id);
+    setSocketId(id);
+  }, []);
 
   const addMessage = useCallback((text: string, isError: boolean) => {
     setTerminalMessages((prevMessages) => [
@@ -230,20 +237,43 @@ function App() {
     }
   };
 
-  //here we hv to call /initialize-project
+  // Initialize Next.js project with PRD
   const handleInitializeProject = async () => {
     if (!prd) {
       setError("No PRD available to initialize the project.");
       return;
     }
 
+    if (!socketId) {
+      addMessage("Waiting for terminal connection to be established...", false);
+      // Wait briefly for socket connection
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (!socketId) {
+        setError("Terminal connection not established. Please try again.");
+        return;
+      }
+    }
+
     setLoading(true);
+    addMessage("Starting project initialization...", false);
+
     try {
+      // Clear any previous error
+      setError(null);
+
+      // Send socketId to receive real-time updates in the terminal
+      addMessage(`Initializing project with socket ID: ${socketId}`, false);
+
       const result = await axios.post(
         "http://localhost:5001/api/initialize-project",
-        { prd }
+        { prd, socketId }
       );
+
       const projectName = result.data.projectName;
+      addMessage(`Project "${projectName}" created successfully!`, false);
+
+      // Update the project with the PRD content
+      addMessage("Enhancing project with AI-generated content...", false);
 
       const updateResult = await axios.post(
         "http://localhost:5001/api/update-project",
@@ -254,7 +284,7 @@ function App() {
       );
 
       if (updateResult.data && updateResult.data.message) {
-        addMessage(`Project updated: ${updateResult.data.message}`, false);
+        addMessage(`✅ Project updated: ${updateResult.data.message}`, false);
       } else if (updateResult.data && updateResult.data.error) {
         setError(updateResult.data.error);
         addErrorMessage(updateResult.data.error);
@@ -262,11 +292,27 @@ function App() {
         addMessage("Project updated, but no message returned.", false);
       }
 
-      addMessage(`Project Path: ${result.data.projectPath}`, false);
+      // Add the project path to the terminal messages
+      addMessage(`📁 Project Path: ${result.data.projectPath}`, false);
+
+      // Set selected project to the newly created one
+      setSelectedProject(projectName);
+
+      // Refresh project list
+      fetchProjects();
+
+      addMessage(
+        "Project initialization complete! You can now start working on your project.",
+        false
+      );
     } catch (err: any) {
       console.error("Error initializing project:", err);
       setError("Failed to initialize the project. Please try again.");
-      addErrorMessage("Failed to initialize the project.");
+      addErrorMessage(
+        `Failed to initialize the project: ${
+          err.response?.data?.details || err.message
+        }`
+      );
     } finally {
       setLoading(false);
     }
@@ -286,21 +332,20 @@ function App() {
     }
   }, [response]);
 
+  // Extract fetchProjects as a reusable function
+  const fetchProjects = async () => {
+    try {
+      const result = await axios.get("http://localhost:5001/api/list-projects");
+      console.log("Fetched projects:", result.data);
+      setProjects(result.data.projects || []);
+    } catch (err) {
+      console.error("Error fetching projects:", err);
+      setError("Failed to fetch projects");
+    }
+  };
+
   // Fetch projects on component mount
   useEffect(() => {
-    const fetchProjects = async () => {
-      try {
-        const result = await axios.get(
-          "http://localhost:5001/api/list-projects"
-        );
-        console.log("Fetched projects:", result.data);
-        setProjects(result.data.projects || []);
-      } catch (err) {
-        console.error("Error fetching projects:", err);
-        setError("Failed to fetch projects");
-      }
-    };
-
     fetchProjects();
   }, [test, prd]);
 
@@ -449,11 +494,14 @@ function App() {
               />
             </Panel>
             <TerminalPanel>
-              <Terminal
+              <TerminalWithHeader
                 addErrorMessage={addErrorMessage}
                 addMessage={addMessage}
                 addSuggestions={addSuggestions}
                 runCommand={runCommand}
+                onSocketReady={handleSocketReady}
+                socketId={socketId}
+                loading={loading}
               />
             </TerminalPanel>
           </DualPanelLayout>
@@ -507,6 +555,7 @@ const DualPanelLayout = styled.div`
   flex-direction: row;
   width: 100%;
   height: 100vh;
+  position: relative;
 `;
 
 const Panel = styled.div`
@@ -520,7 +569,10 @@ const Panel = styled.div`
 const TerminalPanel = styled(Panel)`
   background-color: ${(props) => props.theme.colors.background};
   border-left: 1px solid ${(props) => props.theme.colors.border};
+  position: relative;
 `;
+
+// Removed unused styled components
 
 // Project management UI components
 const ProjectManagementPanel = styled.div`

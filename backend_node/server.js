@@ -11,7 +11,7 @@ const generateRouter = require("./routes/generate");
 const prdRouter = require("./routes/prd");
 
 //
-const initializeProjectRouter = require("./services/initialize-project");
+const initializeProjectRouterBuilder = require("./services/initialize-project");
 const updateProjectRouter = require("./services/update-project");
 const listProjectsRouter = require("./services/list-projects");
 
@@ -30,9 +30,21 @@ app.use(
   })
 );
 
+// Create the server first so we can access io
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: ["http://localhost:3000", "http://localhost:3001"],
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+});
+
 // Include routers
 app.use(generateRouter);
 app.use(prdRouter);
+// Pass io to initialize project router
+const initializeProjectRouter = initializeProjectRouterBuilder(io);
 app.use("/api", initializeProjectRouter);
 app.use("/api", updateProjectRouter);
 app.use("/api", listProjectsRouter);
@@ -128,15 +140,6 @@ app.post("/api/fix-command", async (req, res) => {
       success: false,
     });
   }
-});
-
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: ["http://localhost:3000", "http://localhost:3001"],
-    methods: ["GET", "POST"],
-    credentials: true,
-  },
 });
 
 // Determine shell based on operating system
